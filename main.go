@@ -9,6 +9,10 @@ import (
 	"os"
 )
 
+var (
+	expectingPassword map[int64]bool
+)
+
 func getPublicIP() string {
 	resp, err := http.Get("http://api.ipify.org")
 	if err != nil {
@@ -23,12 +27,12 @@ func getPublicIP() string {
 }
 
 func main() {
-
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Ошибка при загрузке файла .env")
 	}
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	expectedPassword := os.Getenv("ACCESS_PASSWORD")
 
 	bot, err := tgbotapi.NewBotAPI(telegramBotToken)
 	if err != nil {
@@ -42,6 +46,8 @@ func main() {
 
 	updates, err := bot.GetUpdatesChan(u)
 
+	expectingPassword = make(map[int64]bool)
+
 	for update := range updates {
 		if update.Message == nil {
 			continue
@@ -53,6 +59,19 @@ func main() {
 			ip := getPublicIP()
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, ip)
 			bot.Send(msg)
+		} else if update.Message.Text == "/password" {
+			expectingPassword[update.Message.Chat.ID] = true
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Пожалуйста, введите ваш пароль:")
+			bot.Send(msg)
+		} else if expectingPassword[update.Message.Chat.ID] {
+			if update.Message.Text == expectedPassword {
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Вы успешно авторизованы.")
+				bot.Send(msg)
+			} else {
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Неверный пароль.")
+				bot.Send(msg)
+			}
+			expectingPassword[update.Message.Chat.ID] = false // Сброс ожидания ввода пароля
 		}
 	}
 }
