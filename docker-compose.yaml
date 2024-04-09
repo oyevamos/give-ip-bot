@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:13
+    volumes:
+      - ./migration/create.sql:/docker-entrypoint-initdb.d/create.sql
+    environment:
+      POSTGRES_DB: "give-ip-bot"
+      POSTGRES_USER: "user"
+      POSTGRES_PASSWORD: "12345"
+    ports:
+      - "5432:5432"

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/joho/godotenv"
+	"github.com/oyevamos/give-ip-bot.git/config"
+	"github.com/oyevamos/give-ip-bot.git/repository"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
+	"time"
 )
 
 var (
@@ -27,16 +29,16 @@ func getPublicIP() string {
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Ошибка при загрузке файла .env")
-	}
-	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	expectedPassword := os.Getenv("ACCESS_PASSWORD")
+	cfg := config.LoadConfig()
 
-	bot, err := tgbotapi.NewBotAPI(telegramBotToken)
+	repo, err := repository.NewWeather(cfg.Postgres)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
+	}
+
+	bot, err := tgbotapi.NewBotAPI(cfg.TelegramBotToken)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	bot.Debug = true
@@ -52,10 +54,20 @@ func main() {
 		if update.Message == nil {
 			continue
 		}
+		ctx := context.Background()
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
 		if update.Message.Text == "/ip" {
+			session, err := repo.GetSession(ctx, update.Message.Chat.ID)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Need to authorize, use command /password"))
+				continue
+			}
+			if session.ExpiresAt.After(time.Now()) {
+				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Need to authorize, use command /password"))
+				continue
+			}
 			ip := getPublicIP()
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, ip)
 			bot.Send(msg)
