@@ -52,13 +52,14 @@ func (w *WeatherRepository) SetSession(ctx context.Context, chatId int64) error 
 	}
 	session := &domain.Session{
 		ChatId:    chatId,
-		ExpiresAt: expiredAt,
+		ExpiredAt: expiredAt,
 	}
 	if has {
 		_, err = w.Engine.Update(session)
 		if err != nil {
 			return err
 		}
+		return nil
 	}
 	_, err = w.Engine.Insert(session)
 	return err

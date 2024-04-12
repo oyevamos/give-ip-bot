@@ -8,11 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
-)
-
-var (
-	expectingPassword map[int64]bool
 )
 
 func getPublicIP() string {
@@ -48,42 +45,46 @@ func main() {
 
 	updates, err := bot.GetUpdatesChan(u)
 
-	expectingPassword = make(map[int64]bool)
-
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
+
 		ctx := context.Background()
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-
-		if update.Message.Text == "/ip" {
+		switch update.Message.Command() {
+		case "ip":
 			session, err := repo.GetSession(ctx, update.Message.Chat.ID)
 			if err != nil {
+				log.Print(err)
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Need to authorize, use command /password"))
 				continue
 			}
-			if session.ExpiresAt.After(time.Now()) {
+			if session.ExpiredAt.Before(time.Now()) {
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Need to authorize, use command /password"))
 				continue
 			}
 			ip := getPublicIP()
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, ip)
 			bot.Send(msg)
-		} else if update.Message.Text == "/password" {
-			expectingPassword[update.Message.Chat.ID] = true
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Пожалуйста, введите ваш пароль:")
-			bot.Send(msg)
-		} else if expectingPassword[update.Message.Chat.ID] {
-			if update.Message.Text == expectedPassword {
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Вы успешно авторизованы.")
+		case "password":
+			pass := strings.Split(update.Message.Text, "/password ")
+			if len(pass) != 2 {
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Неправильный формат заполнения пароля")
 				bot.Send(msg)
+				continue
+			}
+			if cfg.AccessPassword == pass[1] {
+				err = repo.SetSession(ctx, update.Message.Chat.ID)
+				if err != nil {
+					log.Print(err)
+
+				}
 			} else {
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Неверный пароль.")
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Неверный пароль")
 				bot.Send(msg)
 			}
-			expectingPassword[update.Message.Chat.ID] = false // Сброс ожидания ввода пароля
 		}
 	}
 }
